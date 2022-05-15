@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__all__ = ("ROS2Field", "ROS2MsgFormat")
+__all__ = ("ROSField", "ROSMsgFormat")
 
 import re
 from typing import Any, Dict, List, Optional
@@ -27,76 +27,12 @@ from typing import (
     TypeVar,
     Union,
 )
-from .base import Duration, is_builtin, Time
+#from .base import Duration, is_builtin, Time
+import msg
+import base
+
 R_COMMENT = r"(#.*)?"
 R_BLANK = re.compile(f"^\s*{R_COMMENT}$")
-FIELD = TypeVar("FIELD", bound=Field)
-CONSTANT = TypeVar("CONSTANT", bound=Constant)
-
-
-@attr.s(frozen=True, str=False, slots=True, auto_attribs=True)
-class ROS2Field(Field):
-    R_TYPE = (r"[a-zA-Z_/][a-zA-Z0-9_/]*"
-              r"(?P<strbounds><=\d+)?(?:\[(?:<=)?\d*\])?")
-    R_DEFAULT_VALUE = r"[^#]*"
-    R_FIELD = re.compile(f"^\s*(?P<type>{R_TYPE})"
-                         f"\s+(?P<name>{Field.R_NAME})(?:\s+)?"
-                         f"(?P<val>{R_DEFAULT_VALUE}){R_COMMENT}")
-    REXP_TYPE = re.compile(R_TYPE)
-
-    default_value: Optional[str]
-
-    @classmethod
-    def from_string(cls, package: str, line: str) -> Optional["ROS2Field"]:
-        m_field = cls.R_FIELD.match(line)
-        if m_field:
-            typ = m_field.group('type')
-            name = m_field.group('name')
-            typ = cls._resolve_type(package, typ)
-            default_value = m_field.group('val')
-            field = ROS2Field(typ,
-                              name,
-                              default_value if default_value else None)
-            return field
-        return None
-
-    @classmethod
-    def _resolve_type(cls, package: str, typ: str) -> str:
-
-        # The string bounds (string<=123) will be removed to
-        # help resolution of the type
-        r_type_match = cls.REXP_TYPE.match(typ)
-        if r_type_match and r_type_match.group('strbounds'):
-            typ = typ.replace(r_type_match.group('strbounds'), '')
-        return super()._resolve_type(package, typ)
-
-
-class ROS2MsgFormat(MsgFormat[ROS2Field, Constant]):
-
-    @classmethod
-    def from_string(
-        cls, package: str, name: str, text: str
-    ) -> "ROS2MsgFormat":
-        fields: List[ROS2Field] = []
-        constants: List[Constant] = []
-
-        for line in text.split("\n"):
-            m_blank = R_BLANK.match(line)
-            if m_blank:
-                continue
-
-            constant = Constant.from_string(line)
-            field = ROS2Field.from_string(package, line)
-            if constant:
-                constants.append(constant)
-            elif field:
-                fields.append(field)
-
-        return ROS2MsgFormat(package=package,
-                             name=name,
-                             definition=text,
-                             fields=fields,
-                             constants=constants)
 
 @attr.s(frozen=True, str=False, slots=True, auto_attribs=True)
 class Field:
@@ -153,7 +89,7 @@ class Field:
         base_typ = typ.partition("[")[0]
         if typ == "Header":
             typ_resolved = "std_msgs/Header"
-        elif "/" not in typ and not is_builtin(base_typ):
+        elif "/" not in typ and not base.is_builtin(base_typ):
             typ_resolved = f"{package}/{typ}"
 
         if typ != typ_resolved:
@@ -181,6 +117,72 @@ class Field:
 
     def __str__(self) -> str:
         return f"{self.typ} {self.name}"
+
+
+@attr.s(frozen=True, str=False, slots=True, auto_attribs=True)
+class ROSField(Field):
+    R_TYPE = (r"[a-zA-Z_/][a-zA-Z0-9_/]*"
+              r"(?P<strbounds><=\d+)?(?:\[(?:<=)?\d*\])?")
+    R_DEFAULT_VALUE = r"[^#]*"
+    R_FIELD = re.compile(f"^\s*(?P<type>{R_TYPE})"
+                         f"\s+(?P<name>{Field.R_NAME})(?:\s+)?"
+                         f"(?P<val>{R_DEFAULT_VALUE}){R_COMMENT}")
+    REXP_TYPE = re.compile(R_TYPE)
+
+    default_value: Optional[str]
+
+    @classmethod
+    def from_string(cls, package: str, line: str) -> Optional["ROSField"]:
+        m_field = cls.R_FIELD.match(line)
+        if m_field:
+            typ = m_field.group('type')
+            name = m_field.group('name')
+            typ = cls._resolve_type(package, typ)
+            default_value = m_field.group('val')
+            field = ROSField(typ,
+                              name,
+                              default_value if default_value else None)
+            return field
+        return None
+
+    @classmethod
+    def _resolve_type(cls, package: str, typ: str) -> str:
+
+        # The string bounds (string<=123) will be removed to
+        # help resolution of the type
+        r_type_match = cls.REXP_TYPE.match(typ)
+        if r_type_match and r_type_match.group('strbounds'):
+            typ = typ.replace(r_type_match.group('strbounds'), '')
+        return super()._resolve_type(package, typ)
+
+
+class ROSMsgFormat(msg.MsgFormat[ROSField, msg.Constant]):
+
+    @classmethod
+    def from_string(
+        cls, package: str, name: str, text: str
+    ) -> "ROSMsgFormat":
+        fields: List[ROSField] = []
+        constants: List[Constant] = []
+
+        for line in text.split("\n"):
+            m_blank = R_BLANK.match(line)
+            if m_blank:
+                continue
+
+            constant = Constant.from_string(line)
+            field = ROSField.from_string(package, line)
+            if constant:
+                constants.append(constant)
+            elif field:
+                fields.append(field)
+
+        return ROSMsgFormat(package=package,
+                             name=name,
+                             definition=text,
+                             fields=fields,
+                             constants=constants)
+
 
 
 
@@ -244,7 +246,8 @@ class Constant:
     def __str__(self) -> str:
         return f"{self.typ} {self.name}={str(self.value)}"
 
-
+FIELD = TypeVar("FIELD", bound=Field)
+CONSTANT = TypeVar("CONSTANT", bound=Constant)
 
 @attr.s(frozen=True)
 class MsgFormat(ABC, Generic[FIELD, CONSTANT]):
@@ -271,15 +274,15 @@ class MsgFormat(ABC, Generic[FIELD, CONSTANT]):
     package: str = attr.ib()
     name: str = attr.ib()
     definition: str = attr.ib()
-    fields: Tuple[FIELD, ...] = attr.ib(converter=tuple_from_iterable)
-    constants: Tuple[CONSTANT, ...] = attr.ib(converter=tuple_from_iterable)
+    fields: Tuple[FIELD, ...] = attr.ib(converter=msg.tuple_from_iterable)
+    constants: Tuple[CONSTANT, ...] = attr.ib(converter=msg.tuple_from_iterable)
 
     @classmethod
     def toposort(cls, fmts: Collection["MsgFormat"]) -> List["MsgFormat"]:
         fn_to_fmt: Dict[str, MsgFormat] = {fmt.fullname: fmt for fmt in fmts}
         fn_to_deps: Dict[str, Set[str]] = {
             filename: {
-                f.base_typ for f in fmt.fields if not is_builtin(f.base_typ)
+                f.base_typ for f in fmt.fields if not base.is_builtin(f.base_typ)
             }
             for filename, fmt in fn_to_fmt.items()
         }
@@ -352,4 +355,7 @@ class MsgFormat(ABC, Generic[FIELD, CONSTANT]):
             else:
                 fmt = name_to_format[field.typ]
                 yield from fmt.flatten(name_to_format, ctx + (field.name,))
+
+
+
 

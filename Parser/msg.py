@@ -28,16 +28,21 @@ import dockerblade
 from loguru import logger
 from toposort import toposort_flatten as toposort
 
-from .base import Duration, is_builtin, Time
-from .decode import is_simple
-from .. import exceptions as exc
-from ..util import tuple_from_iterable
+import base
 
 R_COMMENT = r"(#.*)?"
 R_BLANK = re.compile(f"^\s*{R_COMMENT}$")
 
 ConstantValue = Union[str, int, float]
 
+def tuple_from_iterable(val: t.Iterable[t.Any]) -> t.Tuple[t.Any, ...]:
+    """
+    Builds a tuple from an iterable.
+
+    Workaround for https://github.com/python-attrs/attrs/issues/519
+    """
+    return tuple(val)
+    
 
 @attr.s(frozen=True, slots=True, str=False, auto_attribs=True)
 class Constant:
